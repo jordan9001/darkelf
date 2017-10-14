@@ -13,6 +13,7 @@ tattle: tattle_payload/tattle.c
 	$(CC) -shared tattle_payload/tattle.o -o tattle_payload/tattle.so
 
 clean:
-	rm infector
-	rm tattle_payload *.o *.so
+	rm -f infector
+	rm -f tattle_payload/*.o tattle_payload/*.so
+
 
