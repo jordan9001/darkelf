@@ -9,6 +9,7 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <string.h>
 
 // elf header defs
 #define ELF_HEAD_TYPE_OFFSET		0x04
@@ -20,6 +21,9 @@
 #define ELF_SECTION_VADDR		0x10
 #define ELF_SECTION_FILEOFF		0x18
 #define ELF_SECTION_SIZE		0x20
+
+#define START_MOV_CODE			((char[]){0x48, 0xc7, 0xc7})
+#define START_MOV_LEN			3 
 
 // helpful type
 typedef uint64_t offset_t;
@@ -98,7 +102,7 @@ void** find_arg_main(uint8_t* elf_base) {
 
 	cursor = elf_base + section_off;
 
-	// go through the table
+	// go through the symbol table
 	// we don't want to go looking for section strings, because those can be stripped
 	// so we will check for the section that contains our _start
 	for (i = 0; i < section_entry_count; i++, cursor += section_entry_size) {
@@ -111,6 +115,7 @@ void** find_arg_main(uint8_t* elf_base) {
 	}
 
 	if (!text_file_offset) {
+		// we didin't find the section
 		printf("Couldn't find section for _start!\n");
 		return NULL;
 	}
@@ -121,8 +126,25 @@ void** find_arg_main(uint8_t* elf_base) {
 	printf("Start in the file should be at offset %p\n", (void*)startoff);
 	printf("First few bytes : %02x %02x %02x %02x\n", cursor[0], cursor[1], cursor[2], cursor[3]); 
 
-	// TODO
-	return NULL;
+	// we have the section, now we need to find mov rdi, main before the call to __libc_start_main
+	// so in most x86-64 elf files the mov is a REX.W mov, so the instruction starts with 3 bytes
+	// 48 c7 c7 
+	// we really should use a length disassembler
+
+	while (1) {
+		if (!memcmp(cursor, START_MOV_CODE, START_MOV_LEN)) {
+			break;
+		}
+		cursor++;
+		if (cursor >= (elf_base + startoff + section_size)) {
+			// we didn't find it :(
+			return NULL;
+		}
+	}
+	
+	cursor += START_MOV_LEN;	
+
+	return (void**)cursor;
 }
 
 int do_infect(char* target_path, char* lib_path, char* exported_func) {
@@ -138,7 +160,11 @@ int do_infect(char* target_path, char* lib_path, char* exported_func) {
 	arg_main = find_arg_main(tdata);
 	if (arg_main == NULL) {
 		printf("Couldn't find main as an arg\n");
+		close(tfd);
+		return -1;
 	}
+
+	printf("Is main at %p?\n", *arg_main);
 
 	//TODO
 	// find area for our new main

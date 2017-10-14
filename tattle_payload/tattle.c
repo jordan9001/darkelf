@@ -100,3 +100,12 @@ void thrd_main() {
 
 	// return to the real main
 }
+
+void main() {
+	// if we get called as an executable, we need to do the following:
+	// set up all the file descriptor stuff
+	// fork
+	// in child execve: file descriptors are preserved across execve
+	// in parent, just keep the thread going, wait on that I guess
+	// TODO
+}
