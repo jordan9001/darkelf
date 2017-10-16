@@ -1,15 +1,13 @@
 
 CC=gcc
 
-CFLAGS=-Wall -Werror
-
 all: infector
 
 infector: infector.c
-	$(CC) -Wall -Werror infector.c -o infector
+	$(CC) -Wall -Werror -g infector.c -o infector
 
 tattle: tattle_payload/tattle.c
-	$(CC) -c $(CFLAGS) -fpic tattle_payload/tattle.c -o tattle_payload/tattle.o
+	$(CC) -c -Wall -Werror -fpic tattle_payload/tattle.c -o tattle_payload/tattle.o
 	$(CC) -shared tattle_payload/tattle.o -o tattle_payload/tattle.so
 
 clean:

