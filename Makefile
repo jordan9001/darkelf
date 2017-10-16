@@ -6,7 +6,7 @@ CFLAGS=-Wall -Werror
 all: infector
 
 infector: infector.c
-	$(CC) $(CFlAGS) infector.c -o infector
+	$(CC) -Wall -Werror infector.c -o infector
 
 tattle: tattle_payload/tattle.c
 	$(CC) -c $(CFLAGS) -fpic tattle_payload/tattle.c -o tattle_payload/tattle.o
