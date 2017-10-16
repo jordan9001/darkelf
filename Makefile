@@ -4,7 +4,7 @@ CC=gcc
 all: infector
 
 infector: infector.c
-	$(CC) -Wall -Werror -g infector.c -o infector
+	$(CC) -Wall -Werror -g infector.c stager.S -o infector
 
 tattle: tattle_payload/tattle.c
 	$(CC) -c -Wall -Werror -fpic tattle_payload/tattle.c -o tattle_payload/tattle.o

