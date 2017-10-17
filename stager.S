@@ -1,6 +1,10 @@
 .section .text
 .intel_syntax noprefix
+
+# exported symbols
 .globl SH_CODE_START, SH_CODE_END
+
+# can't import symbols, because we need offset independant stuff
 
 # to use this code,  you need to place some things at the end
 # an 8byte return address to the real main
@@ -18,6 +22,8 @@ PONG:
 	push rdi
 	push rsi
 	push rdx
+
+	
 	
 	# TODO
 	

