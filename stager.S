@@ -12,20 +12,37 @@
 # a null terminated export to call
 
 SH_CODE_START:
-
 	jmp PING
 PONG:
-	pop rax
-	push [rax] # push our return address
+	pop rcx
+	push [rcx] # push our return address
 	
 	# save state for real main
 	push rdi
 	push rsi
 	push rdx
 
-	
-	
-	# TODO
+	# call dlopen
+	mov rbx, [rcx + 0x10]
+	lea rdi, [rcx + 0x18]
+
+	push rcx
+	call rbx
+	pop rcx
+
+	mov rdi, rax
+	# go till past null to get to the func name
+	lea rsi, [rcx + 0x18]
+STRLOOP:
+	inc rsi
+	mov rbx, [rsi]
+	test rbx, rbx
+	jne STRLOOP
+	inc rsi
+
+	lea rbx, [rcx + 0x08]
+	call rbx
+	call rax
 	
 	# return to the real main
 	pop rdx
@@ -38,3 +55,7 @@ PING:
 
 
 SH_CODE_END:
+	# real main addr
+	# dlsym
+	# dopen
+	# lib 0x00 func 0x00
