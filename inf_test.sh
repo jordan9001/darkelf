@@ -14,5 +14,6 @@ cp $1 $inffile
 
 echo "infecting $inffile"
 
-./infector $inffile ./testing/testso.so sayit
+echo ./infector $inffile "$PWD/testing/testso.so" sayit
+./infector $inffile "$PWD/testing/testso.so" sayit
 exit $?

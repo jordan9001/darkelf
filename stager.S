@@ -27,6 +27,10 @@ PONG:
 	lea rdi, [rcx + 0x18]
 
 	push rcx
+	
+	# rbx is a pointer to the function pointer
+	# or a got entry for the function pointer
+	mov rbx, [rbx]
 	call rbx
 	pop rcx
 
@@ -41,6 +45,7 @@ STRLOOP:
 	inc rsi
 
 	lea rbx, [rcx + 0x08]
+	mov rbx, [rbx]
 	call rbx
 	call rax
 	
