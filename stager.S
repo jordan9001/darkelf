@@ -25,6 +25,9 @@ PONG:
 	# call dlopen
 	mov rbx, [rcx + 0x10]
 	lea rdi, [rcx + 0x18]
+	xor rsi, rsi
+	inc rsi
+	inc rsi	# flag 2 = RTLD_NOW
 
 	push rcx
 	
@@ -38,13 +41,13 @@ PONG:
 	# go till past null to get to the func name
 	lea rsi, [rcx + 0x18]
 STRLOOP:
+	mov bl, byte[rsi + 0x0] # This gets compiled as rsi + 0x1???
 	inc rsi
-	mov rbx, [rsi]
-	test rbx, rbx
+	test bl, bl
 	jne STRLOOP
 	inc rsi
 
-	lea rbx, [rcx + 0x08]
+	mov rbx, [rcx + 0x08]
 	mov rbx, [rbx]
 	call rbx
 	call rax
