@@ -1,6 +1,5 @@
 *.swp
 *.o
 *.so
-testing
 infector
 .gdb*
