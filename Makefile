@@ -10,7 +10,7 @@ testso:
 	$(CC) -Wall -g -fPIC -shared ./testing/testso.c -o ./testing/testso.so
 
 testfile:
-	$(CC) -Wall -g ./testing/testfile.c -o ./testing/testfile
+	$(CC) -g -ldl ./testing/testfile.c -o ./testing/testfile
 
 clean:
 	rm -f infector

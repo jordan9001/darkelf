@@ -2222,7 +2222,6 @@ int main(int argc, char** argv) {
 	if (handle) {
 		printf("dlopened\n");
 		func = dlsym(handle, "sayit");
-		((void(*)())func)();
 	} else {
 		printf("%s\n", dlerror());
 	}
